@@ -125,11 +125,11 @@ class App extends Component {
           <Grid style={{ width: '100%' }} textAlign='center'>
             <Grid.Column style={{ maxWidth: 700, maxHeight: 800, overflowY: 'auto'}}>
               <Tab menu={{ secondary: true }} panes={[
-                  { menuItem: {content: 'Upload', icon:'upload', key: 'Upload'}, render: () => 
+                  { menuItem: {content: 'Submit', icon:'upload', key: 'Upload'}, render: () => 
                     <Tab.Pane className='tabPane'>
                       <Segment basic loading={this.state.isUploadLoading}>
                         <Form error={this.state.webServiceErrorStatus === WebServiceErrorStatusesEnum.DifferentAddError}>
-                          <Header color='teal' as='h2'>Upload</Header>
+                          <Header color='teal' as='h2'>File Hash Wallet</Header>
                           <ReactDropzone multiple={false}
                             className='dropZoneDefaultState' 
                             acceptClassName='dropZoneAcceptState' 
@@ -137,7 +137,7 @@ class App extends Component {
                             onDrop={this.fileDropped}>
                             <Segment basic>
                               <Icon disabled name='file outline' size='massive' color='teal'/>
-                              <Header as='h4'>Drop file here!</Header>
+                              <Header as='h4'>Choose your file</Header>
                             </Segment>
                           </ReactDropzone>
                           <Message error header='Action Error' content='Something went wrong. Please contact with system administrator.' />
@@ -165,7 +165,7 @@ class App extends Component {
                       </Segment>
                     </Tab.Pane> 
                   },
-                  { menuItem: {content: 'Search', icon:'search', key: 'Search'}, render: () => 
+                  { menuItem: {content: 'Search your hash', icon:'search', key: 'Search'}, render: () => 
                     <Tab.Pane className='tabPane'>
                       <Segment basic loading={this.state.isSearchLoading}>
                         <Header color='teal' as='h2'>Search</Header>
