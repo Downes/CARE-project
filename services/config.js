@@ -8,7 +8,7 @@ CONFIG.eth_url = process.env.ETH_URL || 'http://127.0.0.1:7545';
 CONFIG.wallet_passphrase = process.env.HD_WALLET_PASSPHRASE || 'kick mad army lift retire anger jacket ribbon clever original boss antenna';
 CONFIG.eth_network_id = process.env.ETH_NETWORK_ID || '5777';
 
-CONFIG.hs_contract_address = "0x713baf0d1bA29F0F846629e813A3967162C8C221";
+CONFIG.hs_contract_address = "0x583492983f5dB119E96D9c374723CD5467181aEf";
 
 CONFIG.ipfs_api_address = '127.0.0.1';
 CONFIG.ipfs_api_port = '5001';
