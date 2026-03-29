@@ -1,92 +1,152 @@
-require('./services/config');
-const ipfsAPI = require('ipfs-api');
-const express = require('express');
-const fs = require('fs');
-const moment = require('moment');
+import express from 'express';
+import { createHelia } from 'helia';
+import { unixfs } from '@helia/unixfs';
+import { FsBlockstore } from 'blockstore-fs';
+import { FsDatastore } from 'datastore-fs';
+import { createHash } from 'crypto';
+import Database from 'better-sqlite3';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { mkdirSync } from 'fs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
+const PORT = process.env.PORT || 3002;
+const CLIENT_URL = process.env.CLIENT_URL || '*';
+
+// Ensure data directories exist
+mkdirSync(join(DATA_DIR, 'blocks'), { recursive: true });
+mkdirSync(join(DATA_DIR, 'store'), { recursive: true });
+
+// SQLite — stores file hash, IPFS CID, timestamp, and OTS receipt
+const db = new Database(join(DATA_DIR, 'care.db'));
+db.exec(`
+  CREATE TABLE IF NOT EXISTS files (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_hash   TEXT    UNIQUE NOT NULL,
+    cid         TEXT    NOT NULL,
+    date_added  INTEGER NOT NULL,
+    ots_receipt BLOB
+  )
+`);
+const stmtInsert = db.prepare(
+  'INSERT INTO files (file_hash, cid, date_added, ots_receipt) VALUES (?, ?, ?, ?)'
+);
+const stmtFindByHash = db.prepare('SELECT * FROM files WHERE file_hash = ?');
+
+// Helia IPFS node with persistent FS-backed stores
+const blockstore = new FsBlockstore(join(DATA_DIR, 'blocks'));
+const datastore  = new FsDatastore(join(DATA_DIR, 'store'));
+const helia = await createHelia({ blockstore, datastore });
+const heliaFs = unixfs(helia);
+console.log(`Helia IPFS node started. Peer ID: ${helia.libp2p.peerId}`);
+
+// Submit SHA256 digest to OpenTimestamps calendar servers
+// Returns the raw OTS receipt bytes, or null if all calendars fail
+async function submitToOpenTimestamps(hashHex) {
+  const calendars = [
+    'https://alice.btc.calendar.opentimestamps.org',
+    'https://bob.btc.calendar.opentimestamps.org',
+    'https://finney.calendar.opentimestamps.org',
+  ];
+  const hashBytes = Buffer.from(hashHex, 'hex');
+  for (const calendar of calendars) {
+    try {
+      const response = await fetch(`${calendar}/digest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: hashBytes,
+      });
+      if (response.ok) {
+        const receipt = await response.arrayBuffer();
+        console.log(`OTS receipt obtained from ${calendar}`);
+        return Buffer.from(receipt);
+      }
+    } catch (err) {
+      console.warn(`OTS calendar ${calendar} failed: ${err.message}`);
+    }
+  }
+  console.warn('All OTS calendars failed — file stored without timestamp proof');
+  return null;
+}
+
 const app = express();
-const hsService = require('./services/hs-service');
-const web3Utils = require('./services/web3-utils');
-const CryptoJS = require("crypto-js");
-const bodyParser = require('body-parser');
 
-const ipfs = ipfsAPI(CONFIG.ipfs_api_address, CONFIG.ipfs_api_port, {protocol: 'http'});
+// Serve the built React frontend
+app.use(express.static(join(__dirname, 'app', 'dist')));
 
-app.use(bodyParser.raw({limit: '5mb'}));
-app.use(bodyParser.json());
+app.use(express.raw({ limit: '50mb', type: 'application/octet-stream' }));
+app.use(express.json());
 
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', CONFIG.clientUrl);
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, content-type, Content-Type');
-    next();
+  res.setHeader('Access-Control-Allow-Origin', CLIENT_URL);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
 });
 
-app.post('/addfile', async function(req, res) {
-	try 
-	{	
-		//## prepare data
-		const fileToAdd = req.body;
-		const fileContentWordArray = CryptoJS.lib.WordArray.create(req.body);
-		const fileHash = CryptoJS.SHA256(fileContentWordArray).toString();
-		
-		const epochTime = Math.round(moment().format('X'));
-		console.log(moment().format('X'));
-		
-		//## save to ifps
-		const fileIPFS = await ipfs.files.add(fileToAdd);
-		console.log('Added to ipfs : ' + fileIPFS[0].hash);
-		
-		//## save to blockchain
-		console.log('fileHash : ' + fileHash);
-		const data = await hsService.add(fileIPFS[0].hash, fileHash, epochTime);
-		
-		console.log('Added to ETH Blockchain!');
-		res.status(200).send(JSON.stringify({tx: data, ipfsHash: fileIPFS[0].hash, fileHash: fileHash}));
-	} catch (err) {
-		console.log(err);
+// Upload a file: add to IPFS, hash it, submit to OTS, store record
+app.post('/addfile', async (req, res) => {
+  try {
+    const fileData = req.body;
+    if (!fileData || !fileData.length) {
+      return res.status(400).json({ error: 'No file data received' });
+    }
 
-		if(err.message.includes("revert")) {
-			res.status(409).send();
-		} 
-		else {
-			res.status(500).send();
-		}
-	}
-})
+    // Compute SHA256 of the raw file bytes
+    const fileHash = createHash('sha256').update(fileData).digest('hex');
 
-app.get('/getfile', async function(req, res) {
-    
-	if (!req.query.hash){
-		res.status(400).send({msg: 'Please provide file hash!'});
-		return;
-	}
-	
-	var hash = req.query.hash;
-	try {
-		//## get from blockchain
-		const response = await hsService.get(hash);
-		if(response[0].exists == false) {
-			console.log('File hash not found in smart contract!');
-			res.status(404).send("Not found!");
-			return;
-		}
-		console.log('Found in ETH Blockchain: ' + web3Utils.bytesToString(response[0].filehash));
-		
-		const ipfsHash = web3Utils.bytesToString(response[0].ipfshash);
-		//## get from ipfs
-		const files = await ipfs.files.get(ipfsHash);
-		files.forEach((file) => {
-			console.log('Found in IPFS: ' + file.path);
-			//console.log(file.content.toString('utf8'));
-		});
+    // Reject duplicates
+    const existing = stmtFindByHash.get(fileHash);
+    if (existing) {
+      return res.status(409).json({ error: 'File already exists', cid: existing.cid });
+    }
 
-		//## return
-		console.log('File found in IPFS and ETH Blockchain!');
-		res.status(200).send(JSON.stringify({hash: hash, unixTimeAdded: response[0].dateAdded, exists: response[0].exists, url: CONFIG.ipfs_url + ipfsHash}));
-	} catch (err) {
-		console.log(err);
-		res.status(500).send();
-	}
-})
+    // Add to IPFS via Helia — returns a CID object
+    const cid = await heliaFs.addBytes(fileData);
+    const cidStr = cid.toString();
+    const dateAdded = Math.floor(Date.now() / 1000);
 
-app.listen(CONFIG.port, () => console.log(`DocuHash listening on port ${CONFIG.port}`))
+    // Submit hash to OpenTimestamps (best-effort — doesn't block storage)
+    const otsReceipt = await submitToOpenTimestamps(fileHash);
+
+    stmtInsert.run(fileHash, cidStr, dateAdded, otsReceipt);
+
+    console.log(`Stored: CID=${cidStr}  hash=${fileHash}  ots=${!!otsReceipt}`);
+    res.json({
+      fileHash,
+      cid: cidStr,
+      dateAdded,
+      ipfsUrl: `https://ipfs.io/ipfs/${cidStr}`,
+      otsSubmitted: !!otsReceipt,
+    });
+  } catch (err) {
+    console.error('Error in /addfile:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Look up a file by its SHA256 hash
+app.get('/getfile', async (req, res) => {
+  const { hash } = req.query;
+  if (!hash) return res.status(400).json({ error: 'hash parameter required' });
+
+  const record = stmtFindByHash.get(hash);
+  if (!record) return res.status(404).json({ error: 'Not found' });
+
+  res.json({
+    hash:          record.file_hash,
+    cid:           record.cid,
+    unixTimeAdded: record.date_added,
+    exists:        true,
+    ipfsUrl:       `https://ipfs.io/ipfs/${record.cid}`,
+    otsSubmitted:  !!record.ots_receipt,
+  });
+});
+
+// Fall through to React app for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'app', 'dist', 'index.html'));
+});
+
+app.listen(PORT, () => console.log(`CARE server listening on port ${PORT}`));

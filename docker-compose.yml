@@ -1,0 +1,18 @@
+services:
+  care:
+    build: .
+    container_name: care
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PORT=3002
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data        # persistent SQLite DB + Helia blockstore
+    networks:
+      - web
+    # No ports exposed directly — traffic comes via Caddy reverse proxy
+
+networks:
+  web:
+    external: true

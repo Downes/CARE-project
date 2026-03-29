@@ -1,54 +1,59 @@
-import config from './config'
-import WebServiceErrorStatusesEnum from './WebServiceErrorStatusesEnum'
+import config from './config';
+import WebServiceErrorStatusesEnum from './WebServiceErrorStatusesEnum';
 
-class ipfsFile {
-    constructor(hash, time, exists, url) {
-        this.hash = hash;
-        this.time = time;
-        this.exists = exists;
-        this.url = url;
-    }
+class IpfsFile {
+  constructor({ hash, cid, time, exists, ipfsUrl, otsSubmitted }) {
+    this.hash         = hash;
+    this.cid          = cid;
+    this.time         = time;
+    this.exists       = exists;
+    this.ipfsUrl      = ipfsUrl;
+    this.otsSubmitted = otsSubmitted;
+  }
 }
 
 class WebService {
-    async getFileAsync(hash) {
-        var response = await fetch(`${config.apiServerAddress}/getfile?hash=${hash}`, {
-            method: 'GET',
-            headers: { 'Accept': 'text/plain', 'Content-Type': 'text/plain' }
-        });
+  async getFileAsync(hash) {
+    const response = await fetch(`${config.apiServerAddress}/getfile?hash=${encodeURIComponent(hash)}`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
 
-        if (response.status === 200) {
-            var fileInfo = await response.json();
-            return new ipfsFile(fileInfo.hash, new Date(fileInfo.unixTimeAdded * 1000).toString(), fileInfo.exists, fileInfo.url);
-        }
-        else if(response.status === 404) {
-            return WebServiceErrorStatusesEnum.FileNotExist;
-        }
-        else {
-            console.log('hash: '+ hash +' status: ' + response.status);
-            return WebServiceErrorStatusesEnum.DifferentGetError;
-        }
+    if (response.status === 200) {
+      const info = await response.json();
+      return new IpfsFile({
+        hash:         info.hash,
+        cid:          info.cid,
+        time:         new Date(info.unixTimeAdded * 1000).toLocaleString(),
+        exists:       info.exists,
+        ipfsUrl:      info.ipfsUrl,
+        otsSubmitted: info.otsSubmitted,
+      });
+    } else if (response.status === 404) {
+      return WebServiceErrorStatusesEnum.FileNotExist;
+    } else {
+      console.error('getfile error, status:', response.status);
+      return WebServiceErrorStatusesEnum.DifferentGetError;
     }
+  }
 
-    async addFileAsync(file) {
-            var response = await fetch(`${config.apiServerAddress}/addfile`, {
-                method: 'POST',
-                headers: { 'Accept': 'application/octet-stream', 'Content-Type': 'application/octet-stream' },
-                body: file
-            });
-    
-            if (response.status === 200) {
-                var json = await response.json();
-                return json;
-            }
-            else if(response.status === 409) {
-                return WebServiceErrorStatusesEnum.FileAlreadyExists;
-            }
-            else {
-                return WebServiceErrorStatusesEnum.DifferentAddError;
-            }
+  async addFileAsync(file) {
+    const response = await fetch(`${config.apiServerAddress}/addfile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+
+    if (response.status === 200) {
+      return await response.json();
+    } else if (response.status === 409) {
+      return WebServiceErrorStatusesEnum.FileAlreadyExists;
+    } else {
+      console.error('addfile error, status:', response.status);
+      return WebServiceErrorStatusesEnum.DifferentAddError;
     }
+  }
 }
 
 export default WebService;
-export { ipfsFile };
+export { IpfsFile };
