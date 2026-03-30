@@ -105,7 +105,7 @@ function LoginForm({ onLogin }) {
         <Form.Button primary disabled={!username || !password}>Sign in</Form.Button>
       </Form>
       <p style={{marginTop:'1em',fontSize:'0.85em',color:'#888'}}>
-        No account? Register at <a href={`${config.kvstoreUrl.replace('/api','')}`} target="_blank" rel="noopener noreferrer">kvstore.mooc.ca</a> — or ask your administrator.
+        No account? Register at <a href="https://clist.mooc.ca" target="_blank" rel="noopener noreferrer">clist.mooc.ca</a> using the identity server, or ask your administrator.
       </p>
     </Segment>
   );
