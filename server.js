@@ -42,9 +42,10 @@ try { db.exec('ALTER TABLE files ADD COLUMN filename TEXT'); } catch {}
 const stmtInsert = db.prepare(
   'INSERT INTO files (file_hash, cid, date_added, ots_receipt, filename) VALUES (?, ?, ?, ?, ?)'
 );
-const stmtFindByHash = db.prepare('SELECT * FROM files WHERE file_hash = ?');
-const stmtFindByCid  = db.prepare('SELECT * FROM files WHERE cid = ?');
-const stmtListFiles  = db.prepare('SELECT * FROM files ORDER BY date_added DESC');
+const stmtFindByHash     = db.prepare('SELECT * FROM files WHERE file_hash = ?');
+const stmtFindByCid      = db.prepare('SELECT * FROM files WHERE cid = ?');
+const stmtFindByFilename = db.prepare('SELECT * FROM files WHERE filename LIKE ? ORDER BY date_added DESC LIMIT 1');
+const stmtListFiles      = db.prepare('SELECT * FROM files ORDER BY date_added DESC');
 
 // Helia IPFS node with persistent FS-backed stores
 const blockstore = new FsBlockstore(join(DATA_DIR, 'blocks'));
@@ -160,17 +161,25 @@ app.post('/addfile', async (req, res) => {
   }
 });
 
-// Look up a file by its SHA256 hash
-app.get('/getfile', async (req, res) => {
-  const { hash } = req.query;
-  if (!hash) return res.status(400).json({ error: 'hash parameter required' });
+// Look up a file by SHA256 hash, CID, or filename fragment
+const SHA256_RE = /^[0-9a-f]{64}$/i;
+const CID_RE    = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,})$/;
 
-  const record = stmtFindByHash.get(hash);
+app.get('/getfile', (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: 'q parameter required' });
+
+  let record;
+  if (SHA256_RE.test(q))     record = stmtFindByHash.get(q.toLowerCase());
+  else if (CID_RE.test(q))   record = stmtFindByCid.get(q);
+  else                       record = stmtFindByFilename.get(`%${q}%`);
+
   if (!record) return res.status(404).json({ error: 'Not found' });
 
   res.json({
     hash:          record.file_hash,
     cid:           record.cid,
+    filename:      record.filename || null,
     unixTimeAdded: record.date_added,
     exists:        true,
     fileUrl:       `/file/${record.cid}`,

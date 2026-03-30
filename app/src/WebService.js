@@ -2,9 +2,10 @@ import config from './config';
 import WebServiceErrorStatusesEnum from './WebServiceErrorStatusesEnum';
 
 class IpfsFile {
-  constructor({ hash, cid, time, exists, fileUrl, otsSubmitted }) {
+  constructor({ hash, cid, filename, time, exists, fileUrl, otsSubmitted }) {
     this.hash         = hash;
     this.cid          = cid;
+    this.filename     = filename;
     this.time         = time;
     this.exists       = exists;
     this.fileUrl      = fileUrl;
@@ -13,8 +14,8 @@ class IpfsFile {
 }
 
 class WebService {
-  async getFileAsync(hash) {
-    const response = await fetch(`${config.apiServerAddress}/getfile?hash=${encodeURIComponent(hash)}`, {
+  async getFileAsync(query) {
+    const response = await fetch(`${config.apiServerAddress}/getfile?q=${encodeURIComponent(query)}`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
     });
@@ -24,6 +25,7 @@ class WebService {
       return new IpfsFile({
         hash:         info.hash,
         cid:          info.cid,
+        filename:     info.filename,
         time:         new Date(info.unixTimeAdded * 1000).toLocaleString(),
         exists:       info.exists,
         fileUrl:      info.fileUrl,

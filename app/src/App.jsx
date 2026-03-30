@@ -122,7 +122,7 @@ function UploadPane() {
 
 function SearchPane() {
   const [isLoading, setIsLoading]     = useState(false);
-  const [hash, setHash]               = useState('');
+  const [query, setQuery]             = useState('');
   const [errorStatus, setErrorStatus] = useState(null);
   const [fileInfo, setFileInfo]       = useState(null);
 
@@ -131,7 +131,7 @@ function SearchPane() {
     setErrorStatus(null);
     setFileInfo(null);
 
-    const response = await webService.getFileAsync(hash);
+    const response = await webService.getFileAsync(query);
 
     if (
       response === WebServiceErrorStatusesEnum.FileNotExist ||
@@ -153,10 +153,10 @@ function SearchPane() {
       >
         <Form.Input
           fluid
-          action={{ disabled: !hash, icon: 'search' }}
-          placeholder="Paste SHA256 hash…"
-          value={hash}
-          onChange={(e) => setHash(e.target.value)}
+          action={{ disabled: !query, icon: 'search' }}
+          placeholder="Search by filename, SHA256 hash, or CID…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
         <Message
           error
@@ -173,20 +173,10 @@ function SearchPane() {
 
       {fileInfo && (
         <Segment raised>
-          <Header color="green" as="h3">File found:</Header>
+          <Header color="green" as="h3">
+            <a href={fileInfo.fileUrl}>{fileInfo.filename || fileInfo.cid}</a>
+          </Header>
           <List relaxed>
-            <List.Item>
-              <List.Header>SHA256 Hash</List.Header>
-              <List.Description>{fileInfo.hash}</List.Description>
-            </List.Item>
-            <List.Item>
-              <List.Header>IPFS CID</List.Header>
-              <List.Description>
-                <a href={fileInfo.fileUrl} target="_blank" rel="noopener noreferrer">
-                  {fileInfo.cid}
-                </a>
-              </List.Description>
-            </List.Item>
             <List.Item>
               <List.Header>Added</List.Header>
               <List.Description>{fileInfo.time}</List.Description>
@@ -198,6 +188,14 @@ function SearchPane() {
                   ? '✓ Bitcoin-anchored timestamp receipt stored'
                   : '⚠ No timestamp receipt (OTS submission failed at upload time)'}
               </List.Description>
+            </List.Item>
+            <List.Item>
+              <List.Header>SHA256</List.Header>
+              <List.Description><code>{fileInfo.hash}</code></List.Description>
+            </List.Item>
+            <List.Item>
+              <List.Header>CID <span style={{fontWeight:'normal',fontSize:'0.85em',color:'#888'}}>(content identifier — a hash of the file in IPFS format)</span></List.Header>
+              <List.Description><code>{fileInfo.cid}</code></List.Description>
             </List.Item>
           </List>
         </Segment>
@@ -235,8 +233,10 @@ function FilesPane() {
                 </List.Header>
                 <List.Description>
                   {new Date(f.unixTimeAdded * 1000).toLocaleString()}{' '}
-                  &mdash; SHA256: {f.hash}{' '}
-                  &mdash; {f.otsSubmitted ? '✓ Timestamped' : '⚠ No timestamp'}
+                  &mdash; {f.otsSubmitted ? '✓ Timestamped' : '⚠ No timestamp'}<br />
+                  <span style={{color:'#555'}}>SHA256: </span><code style={{fontSize:'0.85em'}}>{f.hash}</code><br />
+                  <span style={{color:'#555'}}>CID: </span><code style={{fontSize:'0.85em'}}>{f.cid}</code>
+                  <span style={{color:'#aaa',fontSize:'0.8em'}}> (content identifier — a hash of the file in IPFS format)</span>
                 </List.Description>
               </List.Content>
             </List.Item>
