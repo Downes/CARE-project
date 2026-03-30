@@ -95,7 +95,28 @@ No ports need to be exposed on the host in this mode.
 ## Note on IPFS
 
 The embedded Helia node stores files locally and does not advertise to the
-public IPFS network (no port 4001 exposed). Files are accessible via the
-`/file/<cid>` endpoint on this server. The CID is still a valid
-content-addressed identifier — anyone with the original file can verify it
-matches by recomputing the SHA256/CID independently.
+public IPFS network. Files are accessible via the `/file/<cid>` endpoint on
+this server. The CID is still a valid content-addressed identifier — anyone
+with the original file can verify it matches by recomputing the SHA256/CID
+independently.
+
+To make the node a full participant in the public IPFS network — so that
+public gateways (e.g. `ipfs.io`) and other nodes can retrieve your files —
+you would need to:
+
+1. **Expose port 4001** on the host and forward it to the container. Add to
+   `docker-compose.yml`:
+   ```yaml
+   ports:
+     - "4001:4001"
+     - "4001:4001/udp"
+   ```
+2. **Announce the public IP** to the Helia node at startup so it can register
+   itself in the DHT. This requires passing the server's public IP into the
+   libp2p configuration when calling `createHelia()`.
+3. **Open the port in your firewall** (e.g. `ufw allow 4001`).
+
+Once reachable, the node will join the DHT and other peers will be able to
+fetch content by CID directly from your server. Be aware that this increases
+bandwidth usage and attack surface, and the node's peer ID and IP will be
+publicly indexed by DHT crawlers.
