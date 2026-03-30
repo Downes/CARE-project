@@ -1,5 +1,6 @@
 import express from 'express';
-import { createHelia } from 'helia';
+import { createHelia, libp2pDefaults } from 'helia';
+import { createLibp2p } from 'libp2p';
 import { unixfs } from '@helia/unixfs';
 import { FsBlockstore } from 'blockstore-fs';
 import { FsDatastore } from 'datastore-fs';
@@ -11,9 +12,13 @@ import { dirname, join } from 'path';
 import { mkdirSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
-const PORT = process.env.PORT || 3002;
-const CLIENT_URL = process.env.CLIENT_URL || '*';
+const DATA_DIR    = process.env.DATA_DIR    || join(__dirname, 'data');
+const PORT        = process.env.PORT        || 3002;
+const CLIENT_URL  = process.env.CLIENT_URL  || '*';
+// Set IPFS_ANNOUNCE_IP to your server's public IP to join the IPFS network.
+// Leave unset (default) for hermit mode — files stored locally only.
+const IPFS_ANNOUNCE_IP = process.env.IPFS_ANNOUNCE_IP || null;
+const IPFS_PORT        = process.env.IPFS_PORT        || '4001';
 
 // Ensure data directories exist
 mkdirSync(join(DATA_DIR, 'blocks'), { recursive: true });
@@ -43,7 +48,28 @@ const stmtFindByCid  = db.prepare('SELECT * FROM files WHERE cid = ?');
 // Helia IPFS node with persistent FS-backed stores
 const blockstore = new FsBlockstore(join(DATA_DIR, 'blocks'));
 const datastore  = new FsDatastore(join(DATA_DIR, 'store'));
-const helia = await createHelia({ blockstore, datastore });
+
+// If IPFS_ANNOUNCE_IP is set, build a libp2p instance that listens on
+// IPFS_PORT and announces the public IP to the DHT — full network mode.
+// Otherwise use Helia's defaults (hermit mode — local storage only).
+let libp2p;
+if (IPFS_ANNOUNCE_IP) {
+  const defaults = libp2pDefaults();
+  libp2p = await createLibp2p({
+    ...defaults,
+    addresses: {
+      listen:   defaults.addresses.listen.map(a =>
+        a === '/ip4/0.0.0.0/tcp/0' ? `/ip4/0.0.0.0/tcp/${IPFS_PORT}` : a
+      ),
+      announce: [`/ip4/${IPFS_ANNOUNCE_IP}/tcp/${IPFS_PORT}`],
+    },
+  });
+  console.log(`Helia running in network mode — announcing /ip4/${IPFS_ANNOUNCE_IP}/tcp/${IPFS_PORT}`);
+} else {
+  console.log('Helia running in hermit mode — local storage only');
+}
+
+const helia = await createHelia({ blockstore, datastore, ...(libp2p ? { libp2p } : {}) });
 const heliaFs = unixfs(helia);
 console.log(`Helia IPFS node started. Peer ID: ${helia.libp2p.peerId}`);
 

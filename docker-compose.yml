@@ -19,6 +19,12 @@ services:
     # if running without a reverse proxy.
     # ports:
     #   - "3002:3002"
+    # --- IPFS network mode ---
+    # If IPFS_ANNOUNCE_IP is set in .env, also expose port 4001 and open it
+    # in your firewall so the node can participate in the public IPFS network.
+    # ports:
+    #   - "4001:4001"
+    #   - "4001:4001/udp"
 
 networks:
   web:

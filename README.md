@@ -56,6 +56,8 @@ docker compose logs -f
 | `PORT` | `3002` | Listen port |
 | `DATA_DIR` | `/data` | Path to data directory inside the container |
 | `CLIENT_URL` | `*` | CORS allowed origin — set to your domain in production |
+| `IPFS_ANNOUNCE_IP` | _(unset)_ | Public IPv4 to announce to the IPFS DHT. Unset = hermit mode |
+| `IPFS_PORT` | `4001` | libp2p TCP port (only used when `IPFS_ANNOUNCE_IP` is set) |
 
 ## Deployment Options
 
@@ -102,21 +104,25 @@ independently.
 
 To make the node a full participant in the public IPFS network — so that
 public gateways (e.g. `ipfs.io`) and other nodes can retrieve your files —
-you would need to:
+three things are needed:
 
-1. **Expose port 4001** on the host and forward it to the container. Add to
-   `docker-compose.yml`:
+1. **Set `IPFS_ANNOUNCE_IP`** in your `.env` to your server's public IPv4
+   address. The server will announce this address to the IPFS DHT on startup
+   so other nodes know how to reach it. Optionally set `IPFS_PORT` (default
+   `4001`).
+
+2. **Expose port 4001** on the host and forward it to the container. Uncomment
+   the `ports:` block in `docker-compose.yml`:
    ```yaml
    ports:
      - "4001:4001"
      - "4001:4001/udp"
    ```
-2. **Announce the public IP** to the Helia node at startup so it can register
-   itself in the DHT. This requires passing the server's public IP into the
-   libp2p configuration when calling `createHelia()`.
+
 3. **Open the port in your firewall** (e.g. `ufw allow 4001`).
 
-Once reachable, the node will join the DHT and other peers will be able to
-fetch content by CID directly from your server. Be aware that this increases
-bandwidth usage and attack surface, and the node's peer ID and IP will be
-publicly indexed by DHT crawlers.
+Once all three are in place, the node will join the DHT on startup and other
+peers — including public gateways — will be able to fetch content by CID
+directly from your server. Be aware that this increases bandwidth usage and
+attack surface, and the node's peer ID and IP will be publicly indexed by DHT
+crawlers within minutes.

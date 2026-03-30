@@ -13,6 +13,7 @@
     "blockstore-fs": "^2.0.0",
     "datastore-fs": "^10.0.0",
     "express": "^4.18.2",
-    "helia": "^5.1.0"
+    "helia": "^5.1.0",
+    "libp2p": "^2.10.0"
   }
 }
