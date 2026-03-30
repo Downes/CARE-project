@@ -1,22 +1,129 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
-  Grid, Segment, Header, Form, List, Message, Icon, Tab
+  Grid, Segment, Header, Form, List, Message, Icon, Tab, Button
 } from 'semantic-ui-react';
 import WebService from './WebService';
 import WebServiceErrorStatusesEnum from './WebServiceErrorStatusesEnum';
+import config from './config';
 
 const webService = new WebService();
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+// Derive the authHash sent to kvstore: PBKDF2(password, username+"_auth", 100k, SHA-256)
+// Server stores bcrypt(authHash) — the raw password never leaves the browser.
+async function deriveAuthHash(password, username) {
+  const enc = new TextEncoder();
+  const keyMaterial = await window.crypto.subtle.importKey(
+    'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
+  );
+  const bits = await window.crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode(username + '_auth'), iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const TOKEN_KEY = 'care:access_token';
+const TOKEN_EXP = 'care:token_expires';
+const USER_KEY  = 'care:username';
+
+function loadStoredAuth() {
+  const token   = localStorage.getItem(TOKEN_KEY);
+  const expires = localStorage.getItem(TOKEN_EXP);
+  const username = localStorage.getItem(USER_KEY);
+  if (!token || !expires) return null;
+  if (new Date(expires) < new Date()) { clearStoredAuth(); return null; }
+  return { token, username };
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXP);
+  localStorage.removeItem(USER_KEY);
+}
+
+// ── Login form ────────────────────────────────────────────────────────────────
+
+function LoginForm({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setLoading] = useState(false);
+  const [error, setError]       = useState(null);
+
+  const onSubmit = async () => {
+    if (!username || !password) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const authHash = await deriveAuthHash(password, username.toLowerCase());
+      const res = await fetch(`${config.kvstoreUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.toLowerCase(), auth_hash: authHash }),
+      });
+      if (!res.ok) {
+        setError(res.status === 401 ? 'Invalid username or password.' : 'Login failed. Try again.');
+        return;
+      }
+      const data = await res.json();
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(TOKEN_EXP, data.expires);
+      localStorage.setItem(USER_KEY,  data.username);
+      onLogin({ token: data.token, username: data.username });
+    } catch (err) {
+      setError('Could not reach the identity server. Try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Segment raised>
+      <Header color="teal" as="h3">Sign in to upload files</Header>
+      <p style={{color:'#666',fontSize:'0.9em'}}>
+        Uses your <a href={config.kvstoreUrl.replace('https://','').replace('http://','')} target="_blank" rel="noopener noreferrer">kvstore</a> account.
+      </p>
+      <Form onSubmit={onSubmit} loading={isLoading} error={!!error}>
+        <Form.Input
+          label="Username"
+          placeholder="Username"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          autoComplete="username"
+        />
+        <Form.Input
+          label="Password"
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+        <Message error content={error} />
+        <Form.Button primary disabled={!username || !password}>Sign in</Form.Button>
+      </Form>
+      <p style={{marginTop:'1em',fontSize:'0.85em',color:'#888'}}>
+        No account? Register at <a href={`${config.kvstoreUrl.replace('/api','')}`} target="_blank" rel="noopener noreferrer">kvstore.mooc.ca</a> — or ask your administrator.
+      </p>
+    </Segment>
+  );
+}
 
 // ── Upload tab ────────────────────────────────────────────────────────────────
 
 function UploadPane() {
+  const [auth, setAuth]                 = useState(() => loadStoredAuth());
   const [isLoading, setIsLoading]       = useState(false);
   const [isReaderError, setReaderError] = useState(false);
   const [errorStatus, setErrorStatus]   = useState(null);
   const [results, setResults]           = useState([]);
 
+  const onLogout = () => { clearStoredAuth(); setAuth(null); setResults([]); };
+
   const onDrop = useCallback((acceptedFiles) => {
+    if (!auth) return;
     acceptedFiles.forEach((file) => {
       setIsLoading(true);
       setErrorStatus(null);
@@ -30,7 +137,7 @@ function UploadPane() {
       };
 
       reader.onload = async () => {
-        const response = await webService.addFileAsync(reader.result, file.name);
+        const response = await webService.addFileAsync(reader.result, file.name, auth.token);
 
         if (response === WebServiceErrorStatusesEnum.FileAlreadyExists) {
           setErrorStatus(WebServiceErrorStatusesEnum.FileAlreadyExists);
@@ -56,10 +163,18 @@ function UploadPane() {
     multiple: false,
   });
 
+  if (!auth) return <LoginForm onLogin={setAuth} />;
+
   return (
     <Segment basic loading={isLoading}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <Header color="teal" as="h2" style={{margin:0}}>Upload File</Header>
+        <span style={{fontSize:'0.9em',color:'#666'}}>
+          Signed in as <strong>{auth.username}</strong>{' '}
+          <Button size="mini" basic onClick={onLogout}>Sign out</Button>
+        </span>
+      </div>
       <Form error={errorStatus === WebServiceErrorStatusesEnum.DifferentAddError}>
-        <Header color="teal" as="h2">Upload File to IPFS</Header>
 
         <div
           {...getRootProps()}

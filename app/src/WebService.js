@@ -49,9 +49,10 @@ class WebService {
     return [];
   }
 
-  async addFileAsync(file, filename) {
+  async addFileAsync(file, filename, token) {
     const headers = { 'Content-Type': 'application/octet-stream' };
     if (filename) headers['X-Filename'] = filename;
+    if (token)    headers['Authorization'] = `Bearer ${token}`;
     const response = await fetch(`${config.apiServerAddress}/addfile`, {
       method: 'POST',
       headers,

@@ -19,6 +19,37 @@ const CLIENT_URL  = process.env.CLIENT_URL  || '*';
 // Leave unset (default) for hermit mode — files stored locally only.
 const IPFS_ANNOUNCE_IP = process.env.IPFS_ANNOUNCE_IP || null;
 const IPFS_PORT        = process.env.IPFS_PORT        || '4001';
+const KVSTORE_URL      = process.env.KVSTORE_URL      || 'http://kvstore:5000';
+
+// Token verification — calls kvstore /auth/verify, caches results for 5 minutes
+const tokenCache  = new Map();
+const CACHE_TTL   = 5 * 60 * 1000;
+
+async function verifyToken(token) {
+  const now = Date.now();
+  const cached = tokenCache.get(token);
+  if (cached && cached > now) return true;
+  try {
+    const res = await fetch(`${KVSTORE_URL}/auth/verify`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (res.ok) { tokenCache.set(token, now + CACHE_TTL); return true; }
+  } catch (err) {
+    console.warn('kvstore verify error:', err.message);
+  }
+  tokenCache.delete(token);
+  return false;
+}
+
+function requireAuth(req, res, next) {
+  const auth  = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  verifyToken(token).then(valid => {
+    if (valid) return next();
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }).catch(() => res.status(503).json({ error: 'Auth service unavailable' }));
+}
 
 // Ensure data directories exist
 mkdirSync(join(DATA_DIR, 'blocks'), { recursive: true });
@@ -120,7 +151,7 @@ app.use((req, res, next) => {
 });
 
 // Upload a file: add to IPFS, hash it, submit to OTS, store record
-app.post('/addfile', async (req, res) => {
+app.post('/addfile', requireAuth, async (req, res) => {
   try {
     const fileData = req.body;
     if (!fileData || !fileData.length) {
