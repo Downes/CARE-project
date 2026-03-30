@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@helia/unixfs": "^7.0.4",
+    "jose": "^5.0.0",
     "better-sqlite3": "^9.4.3",
     "blockstore-fs": "^2.0.0",
     "datastore-fs": "^10.0.0",

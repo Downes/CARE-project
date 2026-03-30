@@ -4,7 +4,7 @@
 Proof-of-concept app: users upload files to IPFS via an embedded Helia node. Each file's SHA256 hash is submitted to OpenTimestamps calendar servers for Bitcoin-anchored timestamping. Records are stored locally in SQLite.
 
 ## Stack
-- **Backend**: Node 20, Express, Helia v5 (embedded IPFS), better-sqlite3
+- **Backend**: Node 22, Express, Helia v5 (embedded IPFS), better-sqlite3
 - **Frontend**: React 18, Vite, Semantic UI React v2, react-dropzone v14
 - **Timestamping**: OpenTimestamps (HTTP API, no SDK dependency)
 - **Container**: `care:3002` (single container, serves both API and static frontend)
@@ -13,7 +13,7 @@ Proof-of-concept app: users upload files to IPFS via an embedded Helia node. Eac
 - Container name: `care`
 - Internal port: `3002`
 - No direct external port — routed via Caddy
-- Planned domain: `care.mooc.ca` (Caddy entry not yet added)
+- Domain: `care.mooc.ca`
 
 ## Data Persistence
 - Volume: `./data` → `/data` in container

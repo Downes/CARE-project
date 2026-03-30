@@ -1,4 +1,5 @@
 import express from 'express';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createHelia, libp2pDefaults } from 'helia';
 import { createLibp2p } from 'libp2p';
 import { unixfs } from '@helia/unixfs';
@@ -21,14 +22,40 @@ const IPFS_ANNOUNCE_IP = process.env.IPFS_ANNOUNCE_IP || null;
 const IPFS_PORT        = process.env.IPFS_PORT        || '4001';
 const KVSTORE_URL      = process.env.KVSTORE_URL      || 'http://kvstore:5000';
 
-// Token verification — calls kvstore /auth/verify, caches results for 5 minutes
-const tokenCache  = new Map();
-const CACHE_TTL   = 5 * 60 * 1000;
+// Token verification — JWTs verified locally via JWKS; opaque tokens via kvstore callback
+const tokenCache = new Map();
+const CACHE_TTL  = 5 * 60 * 1000;
+
+// Per-issuer JWKS fetchers (jose caches the fetched keys internally)
+const jwksCache = new Map();
+function getJwks(issuerUrl) {
+  if (!jwksCache.has(issuerUrl)) {
+    jwksCache.set(issuerUrl, createRemoteJWKSet(new URL(`${issuerUrl}/.well-known/jwks.json`)));
+  }
+  return jwksCache.get(issuerUrl);
+}
 
 async function verifyToken(token) {
   const now = Date.now();
   const cached = tokenCache.get(token);
   if (cached && cached > now) return true;
+
+  if (token.split('.').length === 3) {
+    // JWT — decode issuer without verification, then verify signature via JWKS
+    try {
+      const [, payloadB64] = token.split('.');
+      const { iss } = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+      if (!iss) return false;
+      await jwtVerify(token, getJwks(iss), { issuer: iss });
+      tokenCache.set(token, now + CACHE_TTL);
+      return true;
+    } catch (err) {
+      console.warn('JWT verify failed:', err.message);
+      return false;
+    }
+  }
+
+  // Opaque token fallback — for sessions predating JWT migration
   try {
     const res = await fetch(`${KVSTORE_URL}/auth/verify`, {
       headers: { 'Authorization': `Bearer ${token}` },

@@ -25,28 +25,34 @@ async function deriveAuthHash(password, username) {
   return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const TOKEN_KEY = 'care:access_token';
-const TOKEN_EXP = 'care:token_expires';
-const USER_KEY  = 'care:username';
+const TOKEN_KEY   = 'care:access_token';
+const TOKEN_EXP   = 'care:token_expires';
+const USER_KEY    = 'care:username';
+const KVSTORE_KEY = 'care:kvstore_url';
 
 function loadStoredAuth() {
-  const token   = localStorage.getItem(TOKEN_KEY);
-  const expires = localStorage.getItem(TOKEN_EXP);
-  const username = localStorage.getItem(USER_KEY);
+  const token      = localStorage.getItem(TOKEN_KEY);
+  const expires    = localStorage.getItem(TOKEN_EXP);
+  const username   = localStorage.getItem(USER_KEY);
+  const kvstoreUrl = localStorage.getItem(KVSTORE_KEY) || config.kvstoreUrl;
   if (!token || !expires) return null;
   if (new Date(expires) < new Date()) { clearStoredAuth(); return null; }
-  return { token, username };
+  return { token, username, kvstoreUrl };
 }
 
 function clearStoredAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(TOKEN_EXP);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(KVSTORE_KEY);
 }
 
 // ── Login form ────────────────────────────────────────────────────────────────
 
 function LoginForm({ onLogin }) {
+  const [kvstoreUrl, setKvstoreUrl] = useState(
+    () => localStorage.getItem(KVSTORE_KEY) || config.kvstoreUrl
+  );
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setLoading] = useState(false);
@@ -58,7 +64,7 @@ function LoginForm({ onLogin }) {
     setError(null);
     try {
       const authHash = await deriveAuthHash(password, username.toLowerCase());
-      const res = await fetch(`${config.kvstoreUrl}/auth/login`, {
+      const res = await fetch(`${kvstoreUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.toLowerCase(), auth_hash: authHash }),
@@ -68,10 +74,11 @@ function LoginForm({ onLogin }) {
         return;
       }
       const data = await res.json();
-      localStorage.setItem(TOKEN_KEY, data.token);
-      localStorage.setItem(TOKEN_EXP, data.expires);
-      localStorage.setItem(USER_KEY,  data.username);
-      onLogin({ token: data.token, username: data.username });
+      localStorage.setItem(TOKEN_KEY,   data.token);
+      localStorage.setItem(TOKEN_EXP,   data.expires);
+      localStorage.setItem(USER_KEY,    data.username);
+      localStorage.setItem(KVSTORE_KEY, kvstoreUrl);
+      onLogin({ token: data.token, username: data.username, kvstoreUrl });
     } catch (err) {
       setError('Could not reach the identity server. Try again later.');
     } finally {
@@ -82,10 +89,13 @@ function LoginForm({ onLogin }) {
   return (
     <Segment raised>
       <Header color="teal" as="h3">Sign in to upload files</Header>
-      <p style={{color:'#666',fontSize:'0.9em'}}>
-        Uses your <a href={config.kvstoreUrl.replace('https://','').replace('http://','')} target="_blank" rel="noopener noreferrer">kvstore</a> account.
-      </p>
       <Form onSubmit={onSubmit} loading={isLoading} error={!!error}>
+        <Form.Input
+          label="Identity server"
+          placeholder="https://kvstore.mooc.ca"
+          value={kvstoreUrl}
+          onChange={e => setKvstoreUrl(e.target.value)}
+        />
         <Form.Input
           label="Username"
           placeholder="Username"
@@ -105,7 +115,7 @@ function LoginForm({ onLogin }) {
         <Form.Button primary disabled={!username || !password}>Sign in</Form.Button>
       </Form>
       <p style={{marginTop:'1em',fontSize:'0.85em',color:'#888'}}>
-        No account? Register at <a href="https://clist.mooc.ca" target="_blank" rel="noopener noreferrer">clist.mooc.ca</a> using the identity server, or ask your administrator.
+        No account? Register at <a href="https://clist.mooc.ca" target="_blank" rel="noopener noreferrer">clist.mooc.ca</a> or your own identity server.
       </p>
     </Segment>
   );

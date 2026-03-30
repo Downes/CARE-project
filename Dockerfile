@@ -1,5 +1,5 @@
 # ── Stage 1: build the React frontend ────────────────────────────────────────
-FROM node:20-slim AS frontend-builder
+FROM node:22-slim AS frontend-builder
 
 WORKDIR /build/app
 COPY app/package.json app/package-lock.json* ./
@@ -10,8 +10,8 @@ RUN npm run build
 
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-# node:20 (full image) needed because better-sqlite3 requires native compilation
-FROM node:20 AS runtime
+# node:22 (full image) needed because better-sqlite3 requires native compilation
+FROM node:22 AS runtime
 
 WORKDIR /app
 
