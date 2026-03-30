@@ -44,6 +44,7 @@ const stmtInsert = db.prepare(
 );
 const stmtFindByHash = db.prepare('SELECT * FROM files WHERE file_hash = ?');
 const stmtFindByCid  = db.prepare('SELECT * FROM files WHERE cid = ?');
+const stmtListFiles  = db.prepare('SELECT * FROM files ORDER BY date_added DESC');
 
 // Helia IPFS node with persistent FS-backed stores
 const blockstore = new FsBlockstore(join(DATA_DIR, 'blocks'));
@@ -175,6 +176,19 @@ app.get('/getfile', async (req, res) => {
     fileUrl:       `/file/${record.cid}`,
     otsSubmitted:  !!record.ots_receipt,
   });
+});
+
+// List all stored files, newest first
+app.get('/files', (req, res) => {
+  const rows = stmtListFiles.all();
+  res.json(rows.map(r => ({
+    hash:         r.file_hash,
+    cid:          r.cid,
+    filename:     r.filename || null,
+    fileUrl:      `/file/${r.cid}`,
+    unixTimeAdded: r.date_added,
+    otsSubmitted: !!r.ots_receipt,
+  })));
 });
 
 // Download a file by CID — streams bytes from local Helia blockstore

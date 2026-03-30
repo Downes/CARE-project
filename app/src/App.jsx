@@ -206,9 +206,54 @@ function SearchPane() {
   );
 }
 
+// ── Files tab ─────────────────────────────────────────────────────────────────
+
+function FilesPane() {
+  const [files, setFiles]       = useState([]);
+  const [isLoading, setLoading] = useState(true);
+
+  useEffect(() => {
+    webService.getFilesAsync().then(data => {
+      setFiles(data);
+      setLoading(false);
+    });
+  }, []);
+
+  return (
+    <Segment basic loading={isLoading}>
+      <Header color="teal" as="h2">Stored Files</Header>
+      {!isLoading && files.length === 0 && (
+        <p>No files stored yet.</p>
+      )}
+      {files.length > 0 && (
+        <List divided relaxed style={{ textAlign: 'left' }}>
+          {files.map((f, i) => (
+            <List.Item key={i}>
+              <List.Content>
+                <List.Header>
+                  <a href={f.fileUrl}>{f.filename || f.cid}</a>
+                </List.Header>
+                <List.Description>
+                  {new Date(f.unixTimeAdded * 1000).toLocaleString()}{' '}
+                  &mdash; SHA256: {f.hash}{' '}
+                  &mdash; {f.otsSubmitted ? '✓ Timestamped' : '⚠ No timestamp'}
+                </List.Description>
+              </List.Content>
+            </List.Item>
+          ))}
+        </List>
+      )}
+    </Segment>
+  );
+}
+
 // ── App root ──────────────────────────────────────────────────────────────────
 
 const panes = [
+  {
+    menuItem: { content: 'Files', icon: 'list', key: 'files' },
+    render: () => <Tab.Pane className="tabPane"><FilesPane /></Tab.Pane>,
+  },
   {
     menuItem: { content: 'Upload', icon: 'upload', key: 'upload' },
     render: () => <Tab.Pane className="tabPane"><UploadPane /></Tab.Pane>,

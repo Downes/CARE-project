@@ -37,6 +37,16 @@ class WebService {
     }
   }
 
+  async getFilesAsync() {
+    const response = await fetch(`${config.apiServerAddress}/files`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (response.status === 200) return await response.json();
+    console.error('getfiles error, status:', response.status);
+    return [];
+  }
+
   async addFileAsync(file, filename) {
     const headers = { 'Content-Type': 'application/octet-stream' };
     if (filename) headers['X-Filename'] = filename;
