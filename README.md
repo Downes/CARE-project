@@ -24,9 +24,26 @@ retrievable directly from the server.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/addfile` | Upload raw file bytes (`application/octet-stream`); optional `X-Filename` header preserves original filename. Returns `{ fileHash, cid, dateAdded, fileUrl, otsSubmitted }` |
-| GET | `/getfile?hash=<sha256>` | Look up a file by SHA256; returns same fields + `unixTimeAdded` |
+| POST | `/addfile` | Upload raw file bytes (`application/octet-stream`). Requires `Authorization: Bearer <token>`. Optional `X-Filename` header preserves original filename. Returns `{ fileHash, cid, dateAdded, fileUrl, otsSubmitted }` |
+| GET | `/getfile?q=<query>` | Look up a file by SHA256 hash, CID, or filename fragment. Returns file record + `unixTimeAdded` |
+| GET | `/files` | List all stored files, newest first |
 | GET | `/file/<cid>` | Download a file by its CID |
+
+## Authentication
+
+Uploading files requires a valid Bearer token issued by a kvstore instance.
+
+The login form in the UI prompts for an **Identity server** URL (default:
+`https://kvstore.mooc.ca`), username, and password. The password never leaves
+the browser — a PBKDF2-derived hash is sent instead. On success, kvstore returns
+a signed JWT which is stored in `localStorage` and sent as `Authorization: Bearer`
+on upload requests.
+
+The server verifies JWTs locally: it extracts the `iss` claim from the token,
+fetches the public key from `<iss>/.well-known/jwks.json`, and verifies the
+signature — no round-trip to kvstore needed. Any kvstore instance works, not
+just the default. Opaque tokens (older kvstore sessions) are also accepted via a
+fallback call to `KVSTORE_URL/auth/verify`.
 
 ## Data
 
@@ -56,6 +73,7 @@ docker compose logs -f
 | `PORT` | `3002` | Listen port |
 | `DATA_DIR` | `/data` | Path to data directory inside the container |
 | `CLIENT_URL` | `*` | CORS allowed origin — set to your domain in production |
+| `KVSTORE_URL` | `http://kvstore:5000` | kvstore base URL — used as fallback for verifying legacy opaque tokens |
 | `IPFS_ANNOUNCE_IP` | _(unset)_ | Public IPv4 to announce to the IPFS DHT. Unset = hermit mode |
 | `IPFS_PORT` | `4001` | libp2p TCP port (only used when `IPFS_ANNOUNCE_IP` is set) |
 
