@@ -3,6 +3,7 @@ import { createHelia } from 'helia';
 import { unixfs } from '@helia/unixfs';
 import { FsBlockstore } from 'blockstore-fs';
 import { FsDatastore } from 'datastore-fs';
+import { CID } from 'multiformats/cid';
 import { createHash } from 'crypto';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
@@ -26,13 +27,18 @@ db.exec(`
     file_hash   TEXT    UNIQUE NOT NULL,
     cid         TEXT    NOT NULL,
     date_added  INTEGER NOT NULL,
-    ots_receipt BLOB
+    ots_receipt BLOB,
+    filename    TEXT
   )
 `);
+// Add filename column to existing databases that predate this field
+try { db.exec('ALTER TABLE files ADD COLUMN filename TEXT'); } catch {}
+
 const stmtInsert = db.prepare(
-  'INSERT INTO files (file_hash, cid, date_added, ots_receipt) VALUES (?, ?, ?, ?)'
+  'INSERT INTO files (file_hash, cid, date_added, ots_receipt, filename) VALUES (?, ?, ?, ?, ?)'
 );
 const stmtFindByHash = db.prepare('SELECT * FROM files WHERE file_hash = ?');
+const stmtFindByCid  = db.prepare('SELECT * FROM files WHERE cid = ?');
 
 // Helia IPFS node with persistent FS-backed stores
 const blockstore = new FsBlockstore(join(DATA_DIR, 'blocks'));
@@ -110,14 +116,15 @@ app.post('/addfile', async (req, res) => {
     // Submit hash to OpenTimestamps (best-effort — doesn't block storage)
     const otsReceipt = await submitToOpenTimestamps(fileHash);
 
-    stmtInsert.run(fileHash, cidStr, dateAdded, otsReceipt);
+    const filename = req.headers['x-filename'] || null;
+    stmtInsert.run(fileHash, cidStr, dateAdded, otsReceipt, filename);
 
     console.log(`Stored: CID=${cidStr}  hash=${fileHash}  ots=${!!otsReceipt}`);
     res.json({
       fileHash,
       cid: cidStr,
       dateAdded,
-      ipfsUrl: `https://ipfs.io/ipfs/${cidStr}`,
+      fileUrl: `/file/${cidStr}`,
       otsSubmitted: !!otsReceipt,
     });
   } catch (err) {
@@ -139,9 +146,40 @@ app.get('/getfile', async (req, res) => {
     cid:           record.cid,
     unixTimeAdded: record.date_added,
     exists:        true,
-    ipfsUrl:       `https://ipfs.io/ipfs/${record.cid}`,
+    fileUrl:       `/file/${record.cid}`,
     otsSubmitted:  !!record.ots_receipt,
   });
+});
+
+// Download a file by CID — streams bytes from local Helia blockstore
+app.get('/file/:cid', async (req, res) => {
+  const { cid: cidStr } = req.params;
+
+  const record = stmtFindByCid.get(cidStr);
+  if (!record) return res.status(404).send('Not found');
+
+  try {
+    const cid = CID.parse(cidStr);
+    const filename = (record.filename || cidStr).replace(/["\\\r\n]/g, '_');
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Raw codec (0x55) blocks are plain bytes — read directly from blockstore.
+    // UnixFS dag-pb (0x70) blocks go through the unixfs cat interface.
+    if (cid.code === 0x55) {
+      const bytes = await helia.blockstore.get(cid);
+      res.end(Buffer.from(bytes));
+    } else {
+      for await (const chunk of heliaFs.cat(cid)) {
+        res.write(chunk);
+      }
+      res.end();
+    }
+  } catch (err) {
+    console.error('Error in /file/:cid:', err);
+    res.status(500).send(err.message);
+  }
 });
 
 // Fall through to React app for all other routes

@@ -30,7 +30,7 @@ function UploadPane() {
       };
 
       reader.onload = async () => {
-        const response = await webService.addFileAsync(reader.result);
+        const response = await webService.addFileAsync(reader.result, file.name);
 
         if (response === WebServiceErrorStatusesEnum.FileAlreadyExists) {
           setErrorStatus(WebServiceErrorStatusesEnum.FileAlreadyExists);
@@ -41,7 +41,7 @@ function UploadPane() {
         } else {
           setResults((prev) => [
             ...prev,
-            { fileName: file.name, fileHash: response.fileHash, cid: response.cid, otsSubmitted: response.otsSubmitted },
+            { fileName: file.name, fileHash: response.fileHash, cid: response.cid, fileUrl: response.fileUrl, otsSubmitted: response.otsSubmitted },
           ]);
         }
         setIsLoading(false);
@@ -103,7 +103,7 @@ function UploadPane() {
                 <List.Description>
                   <strong>SHA256:</strong> {r.fileHash}<br />
                   <strong>CID:</strong>{' '}
-                  <a href={`https://ipfs.io/ipfs/${r.cid}`} target="_blank" rel="noopener noreferrer">
+                  <a href={r.fileUrl} target="_blank" rel="noopener noreferrer">
                     {r.cid}
                   </a><br />
                   <strong>OpenTimestamps:</strong>{' '}
@@ -182,7 +182,7 @@ function SearchPane() {
             <List.Item>
               <List.Header>IPFS CID</List.Header>
               <List.Description>
-                <a href={fileInfo.ipfsUrl} target="_blank" rel="noopener noreferrer">
+                <a href={fileInfo.fileUrl} target="_blank" rel="noopener noreferrer">
                   {fileInfo.cid}
                 </a>
               </List.Description>

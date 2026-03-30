@@ -9,9 +9,16 @@ services:
       - DATA_DIR=/data
     volumes:
       - ./data:/data        # persistent SQLite DB + Helia blockstore
+    # --- Reverse proxy setup (e.g. Caddy) ---
+    # Uncomment the network below and remove ports: if using a reverse proxy
+    # that shares a Docker network called "web".
     networks:
       - web
-    # No ports exposed directly — traffic comes via Caddy reverse proxy
+    # --- Standalone setup ---
+    # Uncomment ports: and remove/comment the networks: block above
+    # if running without a reverse proxy.
+    # ports:
+    #   - "3002:3002"
 
 networks:
   web:

@@ -2,12 +2,12 @@ import config from './config';
 import WebServiceErrorStatusesEnum from './WebServiceErrorStatusesEnum';
 
 class IpfsFile {
-  constructor({ hash, cid, time, exists, ipfsUrl, otsSubmitted }) {
+  constructor({ hash, cid, time, exists, fileUrl, otsSubmitted }) {
     this.hash         = hash;
     this.cid          = cid;
     this.time         = time;
     this.exists       = exists;
-    this.ipfsUrl      = ipfsUrl;
+    this.fileUrl      = fileUrl;
     this.otsSubmitted = otsSubmitted;
   }
 }
@@ -26,7 +26,7 @@ class WebService {
         cid:          info.cid,
         time:         new Date(info.unixTimeAdded * 1000).toLocaleString(),
         exists:       info.exists,
-        ipfsUrl:      info.ipfsUrl,
+        fileUrl:      info.fileUrl,
         otsSubmitted: info.otsSubmitted,
       });
     } else if (response.status === 404) {
@@ -37,10 +37,12 @@ class WebService {
     }
   }
 
-  async addFileAsync(file) {
+  async addFileAsync(file, filename) {
+    const headers = { 'Content-Type': 'application/octet-stream' };
+    if (filename) headers['X-Filename'] = filename;
     const response = await fetch(`${config.apiServerAddress}/addfile`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers,
       body: file,
     });
 
